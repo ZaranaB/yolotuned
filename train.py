@@ -64,6 +64,8 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         Path(opt.save_dir), opt.epochs, opt.batch_size, opt.weights, opt.single_cls, opt.evolve, opt.data, opt.cfg, \
         opt.resume, opt.noval, opt.nosave, opt.workers, opt.freeze
 
+    extras = {}
+
     # Directories
     w = save_dir / 'weights'  # weights dir
     (w.parent if evolve else w).mkdir(parents=True, exist_ok=True)  # make dir
@@ -434,8 +436,9 @@ def train(hyp,  # path/to/hyp.yaml or hyp dictionary
         callbacks.run('on_train_end', last, best, plots, epoch, results)
         LOGGER.info(f"Results saved to {colorstr('bold', save_dir)}")
 
+    extras["save_dir"] = save_dir
     torch.cuda.empty_cache()
-    return results
+    return results, extras
 
 
 def parse_opt(known=False):
@@ -485,7 +488,7 @@ def parse_opt(known=False):
 
 def main(opt, callbacks=Callbacks()):
 
-    train_outputs = []
+    train_outputs = {}
     print("Callbacks are set", callbacks._callbacks)
     # Checks
     if RANK in [-1, 0]:
@@ -523,8 +526,9 @@ def main(opt, callbacks=Callbacks()):
 
     # Train
     if not opt.evolve:
-        train_result = train(opt.hyp, opt, device, callbacks)
-        train_outputs.append(train_result)
+        train_result, extras = train(opt.hyp, opt, device, callbacks)
+        train_outputs["result"] = train_result
+        train_outputs["extras"] = extras
         if WORLD_SIZE > 1 and RANK == 0:
             LOGGER.info('Destroying process group... ')
             dist.destroy_process_group()
@@ -605,7 +609,7 @@ def main(opt, callbacks=Callbacks()):
                 hyp[k] = round(hyp[k], 5)  # significant digits
 
             # Train mutation
-            results = train(hyp.copy(), opt, device, callbacks)
+            results, extras = train(hyp.copy(), opt, device, callbacks)
 
             # Write mutation results
             print_mutation(results, hyp.copy(), save_dir, opt.bucket)
